@@ -388,6 +388,14 @@ const refreshState = (event = 'bufLoad') => async () => {
 
   merge(current, { filetype, cwd, file, colorscheme, revision, line, column })
   notifyEvent(event)
+
+  updateTopLine()
+}
+
+const updateTopLine = async () => {
+  const buffer = await getCurrent.buffer
+  const topLine = await call.line('w0')
+  buffer.setVar('topline', topLine)
 }
 
 const processBufferedActions = async () => {
@@ -439,6 +447,7 @@ autocmd.cursorMoved(async () => {
   const { line, column } = await getCurrent.position
   merge(current, { line, column })
   notifyEvent('cursorMove')
+  updateTopLine()
 })
 
 autocmd.completeDone(async () => {
@@ -449,6 +458,7 @@ autocmd.completeDone(async () => {
 autocmd.textChanged(async () => {
   current.revision = await expr(`b:changedtick`)
   notifyEvent('bufChange')
+  updateTopLine()
 })
 
 autocmd.bufWritePost(() => notifyEvent('bufWrite'))
@@ -460,6 +470,7 @@ autocmd.cursorMovedI(async () => {
 
   if (prevRevision !== current.revision) notifyEvent('bufChangeInsert')
   events.notify('cursorMoveInsert', prevRevision !== current.revision, current)
+  updateTopLine()
 })
 
 define.VeonimComplete`

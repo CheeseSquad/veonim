@@ -1,5 +1,6 @@
 import * as canvasContainer from '../core/canvas-container'
 import * as dispatch from '../messaging/dispatch'
+import { getCurrent, call } from '../core/neovim'
 import { getWindow } from '../core/windows'
 import { debounce } from '../support/utils'
 
@@ -34,15 +35,28 @@ export const resize = () => {
   ui.scale(window.devicePixelRatio, window.devicePixelRatio)
 }
 
-const draw = ({ col, row, width, color }: CanvasUnderline) => {
+const dontDrawResult = { color: '#000000', render: false, x: -1, y: -1, w: -1 }
+
+const calculateDrawPositions = async ({ col, row, width, color }: CanvasUnderline) => {
   const win = getWindow(row, col)
-  if (!win) return
+  if (!win) return dontDrawResult
+  const buffer = await getCurrent.buffer
+  const topLine = await buffer.getVar('topline') - 1
 
-  // TODO: row needs to be offset relative to the current buffer line...
-  const x = win.colToX(col)
-  const y = win.rowToY(row) + canvasContainer.cell.height - canvasContainer.cell.padding
-  const w = win.cellsToPixelWidth(width)
+  if (row < topLine) return dontDrawResult
 
+  const relativeRow = row - topLine
+
+  return {
+    color,
+    render: true,
+    x: win.colToX(col),
+    y: win.rowToY(relativeRow) + canvasContainer.cell.height - canvasContainer.cell.padding,
+    w: win.cellsToPixelWidth(width),
+  }
+}
+
+const draw = async (x: number, y: number, w: number, color: string) => {
   ui.beginPath()
   ui.strokeStyle = color
   ui.lineWidth = 1
@@ -51,9 +65,14 @@ const draw = ({ col, row, width, color }: CanvasUnderline) => {
   ui.stroke()
 }
 
-const render = (lines: CanvasUnderline[]) => {
+const render = async (lines: CanvasUnderline[]) => {
+  if (!lines.length) return ui.clearRect(0, 0, canvas.width, canvas.height)
+
+  const coordinates = await Promise.all(lines.map(calculateDrawPositions))
+  const validCoordinates = coordinates.filter(c => c.render)
+
   ui.clearRect(0, 0, canvas.width, canvas.height)
-  lines.forEach(draw)
+  validCoordinates.forEach(c => draw(c.x, c.y, c.w, c.color))
 }
 
 export const addUnderlines = (lines: CanvasUnderline[]) => {
@@ -68,3 +87,13 @@ const batchedRender = debounce(() => render(cache.lines), 27)
 resize()
 canvasContainer.on('resize', resize)
 dispatch.sub('redraw', batchedRender)
+
+const updateTopLine = async () => {
+  const buffer = await getCurrent.buffer
+  const topLine = await call.line('w0')
+  buffer.setVar('topline', topLine)
+}
+
+const batchedUpdateLine = debounce(updateTopLine, 1)
+
+dispatch.sub('redraw', batchedUpdateLine)

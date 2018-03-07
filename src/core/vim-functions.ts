@@ -42,4 +42,5 @@ export interface Functions {
   getbufline(expr: string | number, startLine: number, endLine?: number | string): Promise<string[]>,
   getbufvar(expr: string | number, varname?: string, defaultValue?: any): Promise<any>,
   termopen(cmd: string, options: object): void,
+  line(expr: string): Promise<number>,
 }
